@@ -27,7 +27,7 @@ from torch.utils.data.dataset import Subset
 ## kl(q||p) = sum( Q * log(Q / P) )
 ## F.kl_div(P.log(), Q, reduction='sum')  
 def softmax_KLDiv(answer, lesson, T=1.0):
-    return T * T * F.kl_div((answer / T).log_softmax(1),                             (lesson / T).softmax(1), reduction='batchmean')
+    return T * T * F.kl_div((answer / T).log_softmax(1), (lesson / T).softmax(1), reduction='batchmean')
 
 def distillation(teacher, student, optimizer, trainloader, T, device):
     teacher.eval()
@@ -57,7 +57,7 @@ def softmax_JSDiv(answer, lesson, T=1.0, lmd= 0.5):
     Q = (answer / T).log_softmax(1).exp()
     P = (lesson / T).log_softmax(1).exp()
     M = (lmd * Q + (1. - lmd) * P).log()
-    return T * T * (lmd * F.kl_div(M, Q, reduction='batchmean') +                     (1. - lmd) * F.kl_div(M, P, reduction='batchmean'))
+    return T * T * (lmd * F.kl_div(M, Q, reduction='batchmean') + (1. - lmd) * F.kl_div(M, P, reduction='batchmean'))
 
 
 # In[14]:
@@ -143,9 +143,9 @@ def save_dict(name, filepath, state_dict, trainloss, accuracy, sample_idx, T):
     d['state_dict'] = state_dict
     d['trainloss'] = trainloss
     d['accuracy'] = accuracy
-    d['sample_idx'] = sample_idx.tolist()
+    d['sample_idx'] = sample_idx
     d['T'] = T
-    torch.save(d, filepath + '_'.join([name, str(len(sample_idx)), str(T)]))
+    torch.save(d, filepath)
 
 
 # In[19]:
