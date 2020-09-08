@@ -23,6 +23,7 @@ from torch.utils.data.dataset import Subset
 def softmax_KLDiv(answer, lesson, T=1.0):
     return T * T * F.kl_div((answer / T).log_softmax(1), (lesson / T).softmax(1), reduction='batchmean')
 
+
 def distillation(teacher, student, optimizer, trainloader, T, device):
     teacher.eval()
     student.train()
@@ -43,11 +44,13 @@ def distillation(teacher, student, optimizer, trainloader, T, device):
     trainloss = trainloss / len(trainloader.dataset)
     return trainloss
 
+
 def softmax_JSDiv(answer, lesson, T=1.0, lmd= 0.5):
     Q = (answer / T).log_softmax(1).exp()
     P = (lesson / T).log_softmax(1).exp()
     M = (lmd * Q + (1. - lmd) * P).log()
     return T * T * (lmd * F.kl_div(M, Q, reduction='batchmean') + (1. - lmd) * F.kl_div(M, P, reduction='batchmean'))
+
 
 def train(model, optimizer, trainloader, device):
     model.train()
@@ -65,6 +68,7 @@ def train(model, optimizer, trainloader, device):
     trainloss = trainloss / len(trainloader.dataset)
     return trainloss
 
+
 def test(model, testloader, device):
     model.eval()
     correct = 0
@@ -78,6 +82,7 @@ def test(model, testloader, device):
     acc = 100 * correct / len(testloader.dataset)
     return acc
 
+
 def getWeights_loss(model, loader, device):
     model.eval()
     weights = torch.tensor([])
@@ -90,12 +95,33 @@ def getWeights_loss(model, loader, device):
             weights = torch.cat([weights, loss.data.cpu()])
     return weights
 
+
+def getWeights_entropy(model, loader, device):
+    model.eval()
+    weights = torch.tensor([])
+    with torch.no_grad():
+        for data in loader:
+            inputs, _ = data
+            inputs = inputs.to(device)
+            outputs = model(inputs)
+            log_prob = F.log_softmax(outputs, 1)
+            weights = torch.cat([weights, - torch.sum(log_prob * log_prob.exp(), 1).data.cpu()])
+    return weights
+
+
+def spearman_rank_corr(X, Y):
+    N = len(X)
+    rho = 1 - 6 * ((X - Y) ** 2).sum().float() / (N ** 3 - N)
+    return rho
+
+
 def weight2index(weights, idx_pool, sample_num, train_tag):
     _, indices = torch.sort(weights, descending=True)
     select_idx = idx_pool[indices[:sample_num]]
     _, feq = torch.unique(train_tag[select_idx], return_counts=True)
     print(feq)
     return select_idx
+
 
 def make_class_balanced_random_idx(sample_num, train_tag):
     class_num = len(torch.unique(train_tag))
@@ -107,16 +133,11 @@ def make_class_balanced_random_idx(sample_num, train_tag):
         rand_idx = torch.cat((rand_idx, rand_idx_percls))
     return rand_idx[:, 0]
 
-def save_dict(name, filepath, state_dict, trainloss, accuracy, sample_idx, T):
-    d = {}
-    d['mode'] = name
-    d['state_dict'] = state_dict
-    d['trainloss'] = trainloss
-    d['accuracy'] = accuracy
-    d['sample_idx'] = sample_idx
-    d['T'] = T
-    torch.save(d, filepath)
 
+def save_var(filepath, **kwargs):
+    torch.save(kwargs, filepath)
+
+    
 def image_grid(imgs, filename):
     imgs_np = np.array(imgs) / 255.0
     imgs_np = np.transpose(imgs_np, [0,3,1,2])
@@ -159,3 +180,22 @@ def train_and_ret_pred(model, optimizer, trainloader, device):
     
     trainloss = trainloss / len(trainloader.dataset)
     return trainloss, predicts, indices_all
+
+
+def farthest_first_traversal(embedding, n_cluster):
+    centroids_idx = torch.LongTensor([0])
+    for _ in range(n_cluster-1):
+        v, _ = torch.cdist(embedding, embedding[centroids_idx]).min(1)
+        idx = v.argmax(0, keepdim=True).cpu()
+        centroids_idx = torch.cat([centroids_idx, idx])
+    return centroids_idx
+
+def postprocess_by_fft(embedding, sample_idx, train_tag, rate):
+    new_sample_idx = torch.LongTensor([])
+    sample_idx_bool = torch.zeros_like(train_tag==0)
+    sample_idx_bool[sample_idx] = True
+    for t in train_tag.unique():
+        indices = torch.nonzero((train_tag == t) * sample_idx_bool)[:,0]
+        indices_clswis = indices[farthest_first_traversal(embedding[indices], int(rate*len(indices)))]
+        new_sample_idx = torch.cat([new_sample_idx, indices_clswis])
+    return new_sample_idx
