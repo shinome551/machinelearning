@@ -145,6 +145,7 @@ def image_grid(imgs, filename):
     torchvision.utils.save_image(imgs_th, filename,
                                  nrow=10, padding=5)
 
+    
 ## データセットのインデックスを取得できるようにデータセットを拡張するクラス
 ## 叩くとデータ・ラベル・インデックスを返す
 class IndexLapper(Dataset):
@@ -158,6 +159,7 @@ class IndexLapper(Dataset):
     def __len__(self):
         return len(self.dataset)
 
+    
 def train_and_ret_pred(model, optimizer, trainloader, device):
     model.train()
     trainloss = 0
@@ -190,6 +192,7 @@ def farthest_first_traversal(embedding, n_cluster):
         centroids_idx = torch.cat([centroids_idx, idx])
     return centroids_idx
 
+
 def postprocess_by_fft(embedding, sample_idx, train_tag, rate):
     new_sample_idx = torch.LongTensor([])
     sample_idx_bool = torch.zeros_like(train_tag==0)
@@ -199,3 +202,37 @@ def postprocess_by_fft(embedding, sample_idx, train_tag, rate):
         indices_clswis = indices[farthest_first_traversal(embedding[indices], int(rate*len(indices)))]
         new_sample_idx = torch.cat([new_sample_idx, indices_clswis])
     return new_sample_idx
+
+
+def calcECE(model, loader, bin_size=0.1, T=1):
+    model.eval()
+    stats = {'pred':[],
+             'true':[],
+             'conf':[]}
+    with torch.no_grad():
+        for data in testloader:
+            inputs, labels = data
+            stats['true'].extend(labels.unsqueeze(1).tolist())
+            inputs, labels = inputs.to(device), labels.to(device)
+            outputs = model(inputs) / T
+            conf, pred = outputs.log_softmax(1).exp().topk(1)
+            stats['pred'].extend(pred.tolist())
+            stats['conf'].extend(conf.tolist())
+
+    upper_bounds = np.arange(bin_size, 1+bin_size, bin_size)
+
+    stats_pred = np.array(stats['pred'])
+    stats_true = np.array(stats['true'])
+    stats_conf = np.array(stats['conf'])
+
+    binned_confs = np.digitize(stats_conf, upper_bounds, right=True)
+    uni = np.unique(binned_confs)
+    ECE = 0
+    for i, upper_bound in enumerate(upper_bounds):
+        acc = np.mean((stats_pred == stats_true)[binned_confs == i]) if i in uni else 0
+        conf = np.mean(stats_conf[binned_confs == i]) if i in uni else 0
+        n_b = np.sum([binned_confs == i])
+        ECE += np.abs(acc - conf) * n_b
+
+    return ECE / len(loader.dataset)
+
