@@ -274,7 +274,7 @@ def distillation_ls(label_smoothing, student, optimizer, trainloader, T, device)
         
         answer = student(inputs)
         lesson = label_smoothing(labels)
-        loss = T * T * F.kl_div((outputs / T).log_softmax(1), lesson, reduction='batchmean')
+        loss = T * T * F.kl_div((answer / T).log_softmax(1), lesson, reduction='batchmean')
         loss.backward()
         optimizer.step()
         trainloss += loss.item() * inputs.size()[0]
