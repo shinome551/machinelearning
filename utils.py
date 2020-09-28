@@ -236,3 +236,48 @@ def calcECE(model, loader, bin_size=0.1, T=1):
 
     return ECE / len(loader.dataset)
 
+
+def smooth_one_hot(labels, num_classes, factor):
+    assert 0 <= factor < 1
+    labels_shape = torch.Size((labels.size(0), num_classes))
+    with torch.no_grad():
+        smooth_one_hot = torch.empty(size=labels_shape, device=labels.device)
+        smooth_one_hot.fill_(factor / (num_classes - 1))
+        smooth_one_hot.scatter_(1, labels.data.unsqueeze(1), 1.0 - factor)
+    return smooth_one_hot
+
+def train_ls(model, optimizer, trainloader, device, num_classes, alpha):
+    model.train()
+    trainloss = 0
+    for data in trainloader:
+        inputs, labels = data
+        inputs, labels = inputs.to(device), labels.to(device)
+        optimizer.zero_grad()
+        outputs = model(inputs)
+        label_smooth = smooth_one_hot(labels, num_classes, alpha)
+        loss = F.kl_div(outputs.log_softmax(1), label_smooth, reduction='batchmean')
+        loss.backward()
+        optimizer.step()
+        trainloss += loss.item() * inputs.size()[0]
+
+    trainloss = trainloss / len(trainloader.dataset)
+    return trainloss
+
+
+def distillation_ls(label_smoothing, student, optimizer, trainloader, T, device):
+    student.train()
+    trainloss = 0
+    for data in trainloader:
+        inputs, labels = data
+        inputs, labels = inputs.to(device), labels.to(device)
+        optimizer.zero_grad()
+        
+        answer = student(inputs)
+        lesson = label_smoothing(labels)
+        loss = softmax_KLDiv(answer, lesson, T)
+        loss.backward()
+        optimizer.step()
+        trainloss += loss.item() * inputs.size()[0]
+
+    trainloss = trainloss / len(trainloader.dataset)
+    return trainloss
