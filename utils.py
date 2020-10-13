@@ -127,7 +127,7 @@ def make_class_balanced_random_idx(sample_num, train_tag):
     class_num = len(torch.unique(train_tag))
     num_percls = sample_num // class_num
     rand_idx = torch.LongTensor([])
-    for c in range(10):
+    for c in range(class_num):
         idx_percls = torch.nonzero(train_tag == c)
         rand_idx_percls = idx_percls[torch.randperm(len(idx_percls))][:num_percls]
         rand_idx = torch.cat((rand_idx, rand_idx_percls))
